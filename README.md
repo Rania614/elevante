@@ -13,10 +13,17 @@ Elevante connects entrepreneurs, suppliers / service providers and investors. Ve
 5. **Resubmission.** The user can edit only the fields the admin flagged, then the account goes back to review.
 6. **Access by status.** Only approved accounts reach the dashboard. Admin pages are admin-only.
 
-The next phases are already designed:
+### Phase 2: supply requests, offers and orders
 
-- Supply requests, then offers, then accepting an offer.
-- Investment deals funded into escrow, with milestone-by-milestone release.
+1. **Requests.** An approved entrepreneur publishes a supply request: a product or a service, with quantity, an optional budget, and a deadline for offers.
+2. **Offers.** Approved suppliers see the open requests that match what they registered for (products, services, or both). Each supplier sends one offer per request, and can edit or withdraw it until the deadline.
+3. **Comparing offers.** The entrepreneur compares offers, with the lowest price and the fastest delivery marked.
+4. **Accepting.** Accepting one offer rejects the others and creates an order.
+5. **Orders.**
+   - The supplier moves the order from *accepted* to *in progress*, then to *delivered*.
+   - The entrepreneur confirms receipt.
+
+The next phase adds payments: investment deals and supply orders funded into a simulated escrow ledger, released milestone by milestone.
 
 ## Tech stack
 
@@ -55,7 +62,11 @@ app/
   verify-phone/        OTP form and actions
   login/               login form
   verification/        status page and resubmission of flagged fields
-  dashboard/           approved users only
+  dashboard/           approved users only, with live counts
+  requests/            entrepreneur: my requests, new request, offers and accept
+  market/              supplier: open requests, submit / edit / withdraw an offer
+  offers/              supplier: my offers
+  orders/              both parties: order timeline and status steps
   admin/verifications/ review queue, review page, decision action
   api/admin/kyc/       streams identity images to admins only
 lib/
@@ -65,6 +76,8 @@ lib/
   storage.ts           private file storage with content-based type checks
   otp.ts, otp-delivery.ts
   schemas.ts           Zod schemas shared by forms and actions
+  supply.ts            supply rules: who can do what, in which state (unit tested)
+  money.ts, dates.ts   integer piasters; deadlines at end of day in Cairo time
 prisma/schema.prisma
 middleware.ts          first-line route protection
 ```
@@ -130,6 +143,47 @@ middleware.ts          first-line route protection
 - The admin page shows the birth date and governorate decoded from the ID next to the submitted data.
 
 **Result:** Bad IDs are caught before any image is uploaded. The rules are covered by unit tests in `tests/`.
+
+### Accepting an offer exactly once
+
+**Problem:** Several things can arrive at the same moment:
+
+- A double click.
+- Two open tabs.
+- A supplier editing an offer.
+- The entrepreneur closing the request.
+
+Without care, a request could end up with two accepted offers.
+
+**Approach:** Treat acceptance as a set of state changes that are all-or-nothing. Each change only applies if the row is still in the state the user saw.
+
+**Solution:** A single transaction does four things:
+
+1. Moves the request from `OPEN` to `AWARDED` with `updateMany where status = OPEN`. If no row changes, the action stops.
+2. Moves the chosen offer from `PENDING` to `ACCEPTED`. If that fails, the transaction throws and rolls back the award.
+3. Rejects the remaining pending offers.
+4. Creates the order.
+
+On top of that:
+
+- A unique index on `Order.requestId` is a database-level backstop.
+- When a supplier saves an offer, the server checks again that the request is still open and before its deadline, inside the same transaction as the write.
+- Order steps carry the status the user saw, so a step taken in another tab cannot be applied twice.
+
+**Result:** Each request gets at most one order, and every status change happens once.
+
+### Money and deadlines
+
+**Problem:**
+
+- Floating-point prices round badly. For example, 4.5 EGP × quantity.
+- A date-only deadline is ambiguous across time zones and daylight saving.
+
+**Solution:**
+
+- **Amounts:** stored as integer piasters. Input accepts commas and Arabic digits.
+- **Deadlines:** stored as the last second of the chosen day in Cairo. The UTC offset is computed for that date, so daylight saving is handled.
+- **Tests:** both are unit tested.
 
 ## Known limitations
 

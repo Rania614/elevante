@@ -55,3 +55,11 @@ export async function requireAdmin() {
   if (user.role !== "ADMIN") redirect(homeFor(user))
   return user
 }
+
+/** Approved, non-admin account — optionally restricted to one role. */
+export async function requireApproved(role?: Exclude<Role, "ADMIN">) {
+  const user = await requireUser()
+  if (user.role === "ADMIN" || user.status !== "APPROVED") redirect(homeFor(user))
+  if (role && user.role !== role) redirect("/dashboard")
+  return user
+}

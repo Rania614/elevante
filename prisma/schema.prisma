@@ -1,5 +1,7 @@
-// Elevante v2 — phase 1: accounts, identity verification (KYC), admin review.
-// Later phases add requests, offers, deals, milestones and the escrow ledger.
+// Elevante v2
+// Phase 1: accounts, identity verification (KYC), admin review.
+// Phase 2: supply requests, offers, orders.
+// Phase 3 (planned): investment deals, milestones and the escrow ledger.
 
 generator client {
   provider = "prisma-client-js"
@@ -85,6 +87,10 @@ model User {
   reviewsReceived     VerificationReview[] @relation("ReviewSubject")
   reviewsGiven        VerificationReview[] @relation("ReviewReviewer")
   auditLogs           AuditLog[]
+  supplyRequests      SupplyRequest[]
+  offers              Offer[]
+  ordersAsBuyer       Order[]              @relation("OrderBuyer")
+  ordersAsSupplier    Order[]              @relation("OrderSupplier")
 
   @@index([status, role])
 }
@@ -171,4 +177,98 @@ model AuditLog {
 
   @@index([targetType, targetId])
   @@index([createdAt])
+}
+
+// ───────────────────────── Phase 2: supply ─────────────────────────
+// Money is stored as integer piasters (1 EGP = 100) to avoid floating-point errors.
+
+enum RequestKind {
+  PRODUCT
+  SERVICE
+}
+
+enum RequestStatus {
+  OPEN // accepting offers
+  AWARDED // one offer accepted → an order exists
+  CLOSED // closed by the entrepreneur without an award
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum OrderStatus {
+  ACCEPTED
+  IN_PROGRESS
+  DELIVERED
+  COMPLETED
+}
+
+model SupplyRequest {
+  id              String        @id @default(cuid())
+  entrepreneurId  String
+  entrepreneur    User          @relation(fields: [entrepreneurId], references: [id])
+  kind            RequestKind
+  title           String
+  category        String
+  quantity        Int
+  unit            String
+  budgetMinPiasters Int?
+  budgetMaxPiasters Int?
+  /// offers are accepted until this instant (end of the chosen day, Cairo time)
+  offersDeadline  DateTime
+  description     String
+  status          RequestStatus @default(OPEN)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  offers Offer[]
+  order  Order?
+
+  @@index([status, kind, offersDeadline])
+  @@index([entrepreneurId, createdAt])
+}
+
+model Offer {
+  id            String        @id @default(cuid())
+  requestId     String
+  request       SupplyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  supplierId    String
+  supplier      User          @relation(fields: [supplierId], references: [id])
+  pricePiasters Int
+  deliveryDays  Int
+  note          String?
+  status        OfferStatus   @default(PENDING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  order         Order?
+
+  /// one offer per supplier per request (edited or withdrawn, never duplicated)
+  @@unique([requestId, supplierId])
+  @@index([supplierId, status])
+}
+
+model Order {
+  id             String        @id @default(cuid())
+  requestId      String        @unique
+  request        SupplyRequest @relation(fields: [requestId], references: [id])
+  offerId        String        @unique
+  offer          Offer         @relation(fields: [offerId], references: [id])
+  buyerId        String
+  buyer          User          @relation("OrderBuyer", fields: [buyerId], references: [id])
+  supplierId     String
+  supplier       User          @relation("OrderSupplier", fields: [supplierId], references: [id])
+  amountPiasters Int
+  status         OrderStatus   @default(ACCEPTED)
+  startedAt      DateTime?
+  deliveredAt    DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([buyerId, status])
+  @@index([supplierId, status])
 }
