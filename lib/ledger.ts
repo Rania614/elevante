@@ -7,11 +7,11 @@ import { assertBalanced, type LedgerLine } from "./invest"
 type Tx = Prisma.TransactionClient
 
 /** Writes one balanced ledger transaction. Must be called inside the same DB transaction as the state change it pays for. */
-export async function post(tx: Tx, kind: LedgerKind, lines: LedgerLine[], meta: { dealId?: string; memo?: string } = {}) {
+export async function post(tx: Tx, kind: LedgerKind, lines: LedgerLine[], meta: { dealId?: string; orderId?: string; withdrawalId?: string; memo?: string } = {}) {
   assertBalanced(lines)
   const txId = randomUUID()
   await tx.ledgerEntry.createMany({
-    data: lines.map((l) => ({ txId, kind, account: l.account, amountPiasters: l.amountPiasters, dealId: meta.dealId, memo: meta.memo })),
+    data: lines.map((l) => ({ txId, kind, account: l.account, amountPiasters: l.amountPiasters, dealId: meta.dealId, orderId: meta.orderId, withdrawalId: meta.withdrawalId, memo: meta.memo })),
   })
   return txId
 }

@@ -10,7 +10,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         user={admin}
         nav={
           <nav aria-label="قائمة الإدارة" className="flex gap-1">
-            <Link href="/admin/verifications" className="rounded-lg bg-steel px-3 py-2 text-sm font-bold text-white">طلبات التوثيق</Link>
+            <Link href="/admin/verifications" className="rounded-lg px-3 py-2 text-sm font-bold text-steel hover:bg-mint">طلبات التوثيق</Link>
+            <Link href="/admin/withdrawals" className="rounded-lg px-3 py-2 text-sm font-bold text-steel hover:bg-mint">طلبات السحب</Link>
           </nav>
         }
       />

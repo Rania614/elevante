@@ -7,6 +7,7 @@ import { audit } from "@/lib/audit"
 import { flatten, type FieldErrors } from "@/lib/schemas"
 import { requireApproved } from "@/lib/session"
 import { requestSchema } from "@/lib/supply-schemas"
+import { feeFor } from "@/lib/invest"
 
 export type RequestFormState = { errors: FieldErrors; values: Record<string, string> } | null
 export type ActionResult = { error?: string } | null
@@ -92,6 +93,8 @@ export async function acceptOfferAction(_prev: ActionResult, form: FormData): Pr
         buyerId: user.id,
         supplierId: offer.supplierId,
         amountPiasters: offer.pricePiasters,
+        feePiasters: feeFor(offer.pricePiasters),
+        status: "AWAITING_PAYMENT",
       },
     })
     await audit(tx, { actorId: user.id, action: "offer.accepted", targetType: "Offer", targetId: offer.id, meta: { orderId: order.id } })

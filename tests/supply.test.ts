@@ -51,6 +51,8 @@ test("only pending or withdrawn offers can be changed", () => {
 })
 
 test("order steps belong to the right party, in order", () => {
+  assert.deepEqual(nextOrderStep("AWAITING_PAYMENT", "buyer")?.to, "ACCEPTED")
+  assert.equal(nextOrderStep("AWAITING_PAYMENT", "supplier"), null) // supplier cannot start before payment
   assert.deepEqual(nextOrderStep("ACCEPTED", "supplier")?.to, "IN_PROGRESS")
   assert.deepEqual(nextOrderStep("IN_PROGRESS", "supplier")?.to, "DELIVERED")
   assert.deepEqual(nextOrderStep("DELIVERED", "buyer")?.to, "COMPLETED")

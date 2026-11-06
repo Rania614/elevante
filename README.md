@@ -39,7 +39,12 @@ Elevante connects entrepreneurs, suppliers / service providers and investors. Ve
    When all tranches are released, the deal is completed.
 6. **Balances.** Wallet and escrow balances are computed from the ledger, never stored.
 
-Supply orders will move onto the same ledger next.
+### Phase 4: paid supply orders and withdrawals
+
+1. **Paying an order.** Accepting a supplier's offer creates an order waiting for payment. The entrepreneur pays the price plus the 2% fee into the order's escrow (a simulated payment). The supplier only starts once it is paid.
+2. **Release on delivery.** When the entrepreneur confirms receipt, the order escrow moves to the supplier's wallet in the same transaction as the status change.
+3. **Wallets.** Entrepreneurs and suppliers see their available balance, money still held in escrow for them, and every movement.
+4. **Withdrawals.** A user requests a bank payout. The amount is held immediately, so it cannot be spent twice. An admin transfers the money, then records the bank reference (paid) or rejects with a reason (the money returns to the wallet).
 
 ## Tech stack
 
@@ -209,7 +214,10 @@ On top of that:
 
 - `external:<investor>`: money coming in from outside
 - `escrow:<deal>`: money held for one deal
-- `wallet:<entrepreneur>`: money released to the entrepreneur
+- `escrow:order:<order>`: money held for one supply order
+- `wallet:<user>`: money released to an entrepreneur or supplier
+- `payout:pending:<withdrawal>`: money held while an admin reviews a withdrawal
+- `bank:<user>`: money that left the platform to the user's bank
 - `platform:fees`: the platform's 2%
 
 The money operations work like this:
@@ -234,6 +242,16 @@ WHERE committed <= target - amount AND status = 'OPEN'
 
 If no row is updated, the round is full. The offer's own status change, the deal creation and the automatic close happen in the same transaction.
 
+### A withdrawal that cannot overdraw a wallet
+
+**Problem:** Two withdrawal requests sent at the same moment can both read the same balance and both pass the check.
+
+**Solution:**
+
+- **Lock per user:** the request runs in a transaction that first takes a PostgreSQL advisory lock keyed on the user (`pg_advisory_xact_lock`). A second request waits, then sees the reduced balance.
+- **Hold, then settle:** the amount moves from the wallet to a pending-payout account when it is requested. An admin decision moves it to `bank:<user>` (paid) or back to the wallet (rejected). The decision is a conditional update on `status = PENDING`, so it can only happen once.
+- **Account numbers:** stored encrypted with the same AES-256-GCM key as national IDs. Users see only the last 4 digits; admins see the full number only while the request is pending.
+
 ### Money and deadlines
 
 **Problem:**
@@ -254,5 +272,6 @@ If no row is updated, the round is full. The offer's own status change, the deal
 - **Rate limiting:** there is no rate limiting on login yet. OTP codes are limited to 5 attempts and one resend per minute.
 - **File cleanup:** if saving the account fails after the images are written, the images stay in storage. A cleanup job is planned.
 - **Payments:** they are simulated, and no payment gateway is connected. Funding writes to the ledger as if the money had arrived.
-- **Withdrawals:** withdrawing from the wallet to a bank account will be approved by admins in a later phase.
+- **Withdrawals:** the bank transfer itself is done by an admin outside the platform. Only the reference is recorded.
+- **Orders without payment:** orders created before phase 4 have no escrow, so completing them moves no money.
 - **Milestone proof:** it is text plus an optional https link. File uploads for proof are planned.

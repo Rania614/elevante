@@ -10,12 +10,13 @@ import { formatEgp } from "@/lib/money"
 import { requireApproved } from "@/lib/session"
 import { nextOrderStep, ORDER_FLOW, ORDER_STATUS } from "@/lib/supply"
 import { cn, formatDateTime } from "@/lib/utils"
-import { advanceOrderAction } from "../actions"
+import { advanceOrderAction, payOrderAction } from "../actions"
 
 export const metadata: Metadata = { title: "تفاصيل الطلب" }
 
 const STEP_TEXT = {
-  ACCEPTED: "تم قبول العرض",
+  AWAITING_PAYMENT: "تم قبول العرض",
+  ACCEPTED: "اتدفع في الضمان",
   IN_PROGRESS: "بدأ التنفيذ",
   DELIVERED: "المورد سلّم",
   COMPLETED: "رائد الأعمال أكّد الاستلام",
@@ -38,7 +39,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const party = order.supplierId === user.id ? "supplier" : "buyer"
   const step = nextOrderStep(order.status, party)
   const reached = ORDER_FLOW.indexOf(order.status)
-  const stamps = { ACCEPTED: order.createdAt, IN_PROGRESS: order.startedAt, DELIVERED: order.deliveredAt, COMPLETED: order.completedAt }
+  const stamps = { AWAITING_PAYMENT: order.createdAt, ACCEPTED: order.paidAt, IN_PROGRESS: order.startedAt, DELIVERED: order.deliveredAt, COMPLETED: order.completedAt }
   const st = ORDER_STATUS[order.status]
 
   return (
@@ -54,7 +55,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           <Badge tone={st.tone} dot>{st.label}</Badge>
         </div>
 
-        <ol className="grid gap-4 rounded-2xl bg-brand-tile p-4 sm:grid-cols-4" aria-label="مراحل الطلب">
+        <ol className="grid gap-4 rounded-2xl bg-brand-tile p-4 sm:grid-cols-5" aria-label="مراحل الطلب">
           {ORDER_FLOW.map((s, i) => {
             const done = i <= reached
             return (
@@ -95,14 +96,30 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
         <Card>
           <h2 className="font-bold">القيمة</h2>
           <div className="text-3xl font-extrabold">{formatEgp(order.amountPiasters)}</div>
-          <Note>الدفع والضمان جايين في المرحلة الجاية. دلوقتي الطرفين بيتابعوا التنفيذ هنا.</Note>
-          {step ? (
+          {order.status === "AWAITING_PAYMENT" ? (
+            party === "buyer" ? (
+              <>
+                <dl className="flex flex-col gap-1.5 text-sm">
+                  <div className="flex justify-between"><dt className="text-muted">قيمة الطلب</dt><dd>{formatEgp(order.amountPiasters)}</dd></div>
+                  <div className="flex justify-between"><dt className="text-muted">عمولة المنصة (2%)</dt><dd>{formatEgp(order.feePiasters)}</dd></div>
+                  <div className="flex justify-between border-t border-line pt-1.5 font-bold"><dt>الإجمالي</dt><dd>{formatEgp(order.amountPiasters + order.feePiasters)}</dd></div>
+                </dl>
+                <Note>الدفع هنا محاكاة. المبلغ بيتحجز في الضمان، ومش بيوصل للمورد غير لما تأكّدي الاستلام.</Note>
+                <ConfirmAction action={payOrderAction} fields={{ orderId: order.id }} label={`دفع ${formatEgp(order.amountPiasters + order.feePiasters)}`} confirmLabel="تأكيد الدفع" question="تحويل المبلغ للضمان؟" size="md" />
+              </>
+            ) : (
+              <Note>مستنيين رائد الأعمال يدفع في الضمان. بعدها تقدر تبدأ التنفيذ وأنت ضامن حقك.</Note>
+            )
+          ) : order.paidAt ? (
+            <Note>{order.status === "COMPLETED" ? "تم تحويل المبلغ من الضمان لمحفظة المورد." : "المبلغ محجوز في الضمان، وهيتحوّل للمورد بعد تأكيد الاستلام."}</Note>
+          ) : null}
+          {order.status === "AWAITING_PAYMENT" ? null : step ? (
             <ConfirmAction
               action={advanceOrderAction}
               fields={{ orderId: order.id, from: order.status }}
               label={step.label}
               confirmLabel="تأكيد"
-              question={party === "buyer" ? "تأكيد إنك استلمتي الطلب كامل ومطابق؟ الخطوة دي نهائية." : `تأكيد: ${step.label}؟`}
+              question={party === "buyer" ? "تأكيد إنك استلمتي الطلب كامل ومطابق؟ المبلغ هيتحوّل للمورد، والخطوة دي نهائية." : `تأكيد: ${step.label}؟`}
               size="md"
             />
           ) : order.status !== "COMPLETED" ? (

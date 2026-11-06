@@ -85,7 +85,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                       fields={{ offerId: o.id }}
                       label="قبول العرض"
                       confirmLabel="تأكيد القبول"
-                      question={`قبول عرض ${formatEgp(o.pricePiasters)}؟ باقي العروض هتترفض تلقائيًا.`}
+                      question={`قبول عرض ${formatEgp(o.pricePiasters)}؟ باقي العروض هتترفض تلقائيًا، وبعدها هتدفعي المبلغ في الضمان.`}
                     />
                   ) : null}
                 </article>

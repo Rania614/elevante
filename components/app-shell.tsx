@@ -16,6 +16,7 @@ const NAV: Record<Exclude<Role, "ADMIN">, { href: string; label: string }[]> = {
     { href: "/market", label: "طلبات التوريد" },
     { href: "/offers", label: "عروضي" },
     { href: "/orders", label: "الطلبات الجارية" },
+    { href: "/wallet", label: "المحفظة" },
   ],
   INVESTOR: [
     { href: "/dashboard", label: "الرئيسية" },

@@ -47,8 +47,44 @@ export type LedgerLine = { account: string; amountPiasters: number }
 export const accounts = {
   external: (userId: string) => `external:${userId}`,
   escrow: (dealId: string) => `escrow:${dealId}`,
+  orderEscrow: (orderId: string) => `escrow:order:${orderId}`,
   wallet: (userId: string) => `wallet:${userId}`,
+  pendingPayout: (withdrawalId: string) => `payout:pending:${withdrawalId}`,
+  bank: (userId: string) => `bank:${userId}`,
   fees: "platform:fees",
+}
+
+export const MIN_WITHDRAWAL_PIASTERS = 100_00 // 100 EGP
+
+/** Buyer pays amount + fee: the amount is held in the order's escrow, the fee goes to the platform. */
+export function orderPaymentLines(p: { orderId: string; buyerId: string; amount: number; fee: number }): { kind: LedgerKind; lines: LedgerLine[] }[] {
+  const txs: { kind: LedgerKind; lines: LedgerLine[] }[] = [
+    { kind: "FUNDING", lines: [{ account: accounts.external(p.buyerId), amountPiasters: -p.amount }, { account: accounts.orderEscrow(p.orderId), amountPiasters: p.amount }] },
+    { kind: "PLATFORM_FEE", lines: [{ account: accounts.external(p.buyerId), amountPiasters: -p.fee }, { account: accounts.fees, amountPiasters: p.fee }] },
+  ]
+  return txs.filter((t) => t.lines.every((l) => l.amountPiasters !== 0))
+}
+
+export function orderReleaseLines(p: { orderId: string; supplierId: string; amount: number }): LedgerLine[] {
+  return [
+    { account: accounts.orderEscrow(p.orderId), amountPiasters: -p.amount },
+    { account: accounts.wallet(p.supplierId), amountPiasters: p.amount },
+  ]
+}
+
+/** Withdrawal lifecycle: hold on request, then either pay out or return to the wallet. */
+export function withdrawalLines(stage: "hold" | "paid" | "returned", p: { withdrawalId: string; userId: string; amount: number }): LedgerLine[] {
+  const wallet = accounts.wallet(p.userId)
+  const pending = accounts.pendingPayout(p.withdrawalId)
+  if (stage === "hold") return [{ account: wallet, amountPiasters: -p.amount }, { account: pending, amountPiasters: p.amount }]
+  if (stage === "paid") return [{ account: pending, amountPiasters: -p.amount }, { account: accounts.bank(p.userId), amountPiasters: p.amount }]
+  return [{ account: pending, amountPiasters: -p.amount }, { account: wallet, amountPiasters: p.amount }]
+}
+
+export function withdrawalError(amount: number, available: number): string | null {
+  if (amount < MIN_WITHDRAWAL_PIASTERS) return "أقل مبلغ للسحب 100 ج.م"
+  if (amount > available) return "المبلغ أكبر من الرصيد المتاح"
+  return null
 }
 
 export function assertBalanced(lines: LedgerLine[]) {

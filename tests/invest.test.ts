@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { assertBalanced, canRelease, canSubmitProof, equityFor, feeFor, fundingLines, parsePercent, releaseLines, splitTranches } from "../lib/invest"
+import { assertBalanced, MIN_WITHDRAWAL_PIASTERS, orderPaymentLines, orderReleaseLines, withdrawalError, withdrawalLines, canRelease, canSubmitProof, equityFor, feeFor, fundingLines, parsePercent, releaseLines, splitTranches } from "../lib/invest"
 
 test("tranches are integers and always add up to the amount", () => {
   assert.deepEqual(splitTranches(30_000_000, [3000, 2500, 2500, 2000]), [9_000_000, 7_500_000, 7_500_000, 6_000_000])
@@ -56,4 +56,23 @@ test("milestones move in order", () => {
   assert.equal(canRelease("AWAITING_APPROVAL", false), false)
   assert.equal(canRelease("LOCKED", true), false)
   assert.equal(canRelease("RELEASED", true), false)
+})
+
+test("supply order payment and release are balanced", () => {
+  for (const t of orderPaymentLines({ orderId: "o1", buyerId: "b1", amount: 1_600_000, fee: 32_000 })) assert.doesNotThrow(() => assertBalanced(t.lines))
+  assert.doesNotThrow(() => assertBalanced(orderReleaseLines({ orderId: "o1", supplierId: "s1", amount: 1_600_000 })))
+})
+
+test("withdrawal hold, payout and return are balanced and land in the right accounts", () => {
+  const p = { withdrawalId: "w1", userId: "u1", amount: 5_000_000 }
+  for (const stage of ["hold", "paid", "returned"] as const) assert.doesNotThrow(() => assertBalanced(withdrawalLines(stage, p)))
+  assert.equal(withdrawalLines("hold", p).find((l) => l.account === "wallet:u1")?.amountPiasters, -5_000_000)
+  assert.equal(withdrawalLines("returned", p).find((l) => l.account === "wallet:u1")?.amountPiasters, 5_000_000)
+  assert.equal(withdrawalLines("paid", p).find((l) => l.account === "bank:u1")?.amountPiasters, 5_000_000)
+})
+
+test("withdrawal limits", () => {
+  assert.equal(withdrawalError(MIN_WITHDRAWAL_PIASTERS - 1, 10_000_000), "أقل مبلغ للسحب 100 ج.م")
+  assert.equal(withdrawalError(5_000_000, 4_999_999), "المبلغ أكبر من الرصيد المتاح")
+  assert.equal(withdrawalError(5_000_000, 5_000_000), null)
 })

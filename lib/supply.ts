@@ -22,13 +22,14 @@ export const OFFER_STATUS: Record<OfferStatus, { label: string; tone: "warn" | "
 }
 
 export const ORDER_STATUS: Record<OrderStatus, { label: string; tone: "aqua" | "warn" | "success" }> = {
-  ACCEPTED: { label: "مقبول — لم يبدأ", tone: "aqua" },
+  AWAITING_PAYMENT: { label: "بانتظار الدفع في الضمان", tone: "warn" },
+  ACCEPTED: { label: "مدفوع — لم يبدأ", tone: "aqua" },
   IN_PROGRESS: { label: "قيد التنفيذ", tone: "warn" },
   DELIVERED: { label: "تم التسليم — بانتظار التأكيد", tone: "warn" },
   COMPLETED: { label: "مكتمل", tone: "success" },
 }
 
-export const ORDER_FLOW: OrderStatus[] = ["ACCEPTED", "IN_PROGRESS", "DELIVERED", "COMPLETED"]
+export const ORDER_FLOW: OrderStatus[] = ["AWAITING_PAYMENT", "ACCEPTED", "IN_PROGRESS", "DELIVERED", "COMPLETED"]
 
 /** Can a supplier submit or edit an offer on this request right now? */
 export function isAcceptingOffers(req: { status: RequestStatus; offersDeadline: Date }, now = new Date()) {
@@ -44,17 +45,20 @@ type Party = "buyer" | "supplier"
 
 /**
  * Who moves an order forward:
+ *   buyer:    AWAITING_PAYMENT → ACCEPTED (pays into escrow — handled by payOrderAction)
  *   supplier: ACCEPTED → IN_PROGRESS → DELIVERED
- *   buyer:    DELIVERED → COMPLETED (confirms receipt)
+ *   buyer:    DELIVERED → COMPLETED (confirms receipt; escrow is released to the supplier)
  */
 export function nextOrderStep(status: OrderStatus, party: Party): { to: OrderStatus; label: string } | null {
+  if (party === "buyer" && status === "AWAITING_PAYMENT") return { to: "ACCEPTED", label: "الدفع في الضمان" }
   if (party === "supplier" && status === "ACCEPTED") return { to: "IN_PROGRESS", label: "بدء التنفيذ" }
   if (party === "supplier" && status === "IN_PROGRESS") return { to: "DELIVERED", label: "تم التسليم" }
   if (party === "buyer" && status === "DELIVERED") return { to: "COMPLETED", label: "تأكيد الاستلام" }
   return null
 }
 
-export function stampFor(to: OrderStatus): "startedAt" | "deliveredAt" | "completedAt" | null {
+export function stampFor(to: OrderStatus): "paidAt" | "startedAt" | "deliveredAt" | "completedAt" | null {
+  if (to === "ACCEPTED") return "paidAt"
   return to === "IN_PROGRESS" ? "startedAt" : to === "DELIVERED" ? "deliveredAt" : to === "COMPLETED" ? "completedAt" : null
 }
 

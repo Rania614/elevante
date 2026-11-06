@@ -94,6 +94,8 @@ model User {
   rounds              InvestmentRound[]
   investmentOffers    InvestmentOffer[]
   dealsAsInvestor     Deal[]               @relation("DealInvestor")
+  withdrawals         Withdrawal[]         @relation("WithdrawalUser")
+  withdrawalsReviewed Withdrawal[]         @relation("WithdrawalReviewer")
 
   @@index([status, role])
 }
@@ -204,7 +206,8 @@ enum OfferStatus {
 }
 
 enum OrderStatus {
-  ACCEPTED
+  AWAITING_PAYMENT // offer accepted; buyer has not paid into escrow yet
+  ACCEPTED // paid into escrow; supplier can start
   IN_PROGRESS
   DELIVERED
   COMPLETED
@@ -265,12 +268,17 @@ model Order {
   supplierId     String
   supplier       User          @relation("OrderSupplier", fields: [supplierId], references: [id])
   amountPiasters Int
+  feePiasters    Int           @default(0)
+  /// set explicitly on create (AWAITING_PAYMENT); the default stays ACCEPTED so the enum migration
+  /// does not use a value added in the same transaction
   status         OrderStatus   @default(ACCEPTED)
+  paidAt         DateTime?
   startedAt      DateTime?
   deliveredAt    DateTime?
   completedAt    DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+  ledger         LedgerEntry[]
 
   @@index([buyerId, status])
   @@index([supplierId, status])
@@ -308,6 +316,15 @@ enum LedgerKind {
   FUNDING
   PLATFORM_FEE
   RELEASE
+  WITHDRAWAL_HOLD // wallet → pending payout when a withdrawal is requested
+  WITHDRAWAL_PAID // pending payout → paid out to the bank (admin approved)
+  WITHDRAWAL_RETURNED // pending payout → back to wallet (admin rejected)
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PAID
+  REJECTED
 }
 
 model InvestmentRound {
@@ -434,10 +451,38 @@ model LedgerEntry {
   kind           LedgerKind
   dealId         String?
   deal           Deal?      @relation(fields: [dealId], references: [id])
+  orderId        String?
+  order          Order?     @relation(fields: [orderId], references: [id])
+  withdrawalId   String?
+  withdrawal     Withdrawal? @relation(fields: [withdrawalId], references: [id])
   memo           String?
   createdAt      DateTime   @default(now())
 
   @@index([account])
   @@index([txId])
   @@index([dealId])
+  @@index([orderId])
+}
+
+model Withdrawal {
+  id             String           @id @default(cuid())
+  userId         String
+  user           User             @relation("WithdrawalUser", fields: [userId], references: [id])
+  amountPiasters Int
+  bankName       String
+  accountHolder  String
+  /// IBAN / account number, AES-256-GCM encrypted; only the last 4 digits are kept readable
+  accountEnc     String
+  accountLast4   String
+  status         WithdrawalStatus @default(PENDING)
+  reviewerId     String?
+  reviewer       User?            @relation("WithdrawalReviewer", fields: [reviewerId], references: [id])
+  transferRef    String?
+  adminNote      String?
+  decidedAt      DateTime?
+  createdAt      DateTime         @default(now())
+  ledger         LedgerEntry[]
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
 }
