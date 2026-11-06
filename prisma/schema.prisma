@@ -1,0 +1,443 @@
+// Elevante v2
+// Phase 1: accounts, identity verification (KYC), admin review.
+// Phase 2: supply requests, offers, orders.
+// Phase 3: funding rounds with milestones, investor deals, escrow ledger.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ENTREPRENEUR
+  SUPPLIER
+  INVESTOR
+  ADMIN
+}
+
+/// Lifecycle of an account. Only APPROVED accounts reach the dashboards.
+enum AccountStatus {
+  PENDING_PHONE // registered, phone not confirmed yet
+  PENDING_REVIEW // waiting for an admin
+  NEEDS_CHANGES // admin flagged fields; user must resubmit
+  APPROVED
+  SUSPENDED
+}
+
+enum SupplyType {
+  PRODUCTS
+  SERVICES
+  BOTH
+}
+
+enum ProjectStage {
+  IDEA
+  PROTOTYPE
+  OPERATING
+  REVENUE
+}
+
+enum InvestorType {
+  INDIVIDUAL
+  COMPANY
+  FUND
+}
+
+enum KycKind {
+  ID_FRONT
+  ID_BACK
+  SELFIE
+}
+
+enum ReviewDecision {
+  APPROVED
+  NEEDS_CHANGES
+}
+
+model User {
+  id           String        @id @default(cuid())
+  role         Role
+  status       AccountStatus @default(PENDING_PHONE)
+  fullName     String
+  email        String        @unique
+  phone        String        @unique
+  passwordHash String
+  governorate  String?
+
+  /// National ID is stored encrypted (AES-256-GCM). The HMAC lets us enforce
+  /// one account per ID without keeping the number in plain text.
+  nationalIdEnc   String?
+  nationalIdHash  String?   @unique
+  nationalIdLast4 String?
+  birthDate       DateTime?
+
+  phoneVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  supplierProfile     SupplierProfile?
+  entrepreneurProfile EntrepreneurProfile?
+  investorProfile     InvestorProfile?
+  kycDocuments        KycDocument[]
+  otpCodes            OtpCode[]
+  reviewsReceived     VerificationReview[] @relation("ReviewSubject")
+  reviewsGiven        VerificationReview[] @relation("ReviewReviewer")
+  auditLogs           AuditLog[]
+  supplyRequests      SupplyRequest[]
+  offers              Offer[]
+  ordersAsBuyer       Order[]              @relation("OrderBuyer")
+  ordersAsSupplier    Order[]              @relation("OrderSupplier")
+  rounds              InvestmentRound[]
+  investmentOffers    InvestmentOffer[]
+  dealsAsInvestor     Deal[]               @relation("DealInvestor")
+
+  @@index([status, role])
+}
+
+model SupplierProfile {
+  userId       String     @id
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  supplyType   SupplyType
+  businessName String
+  commercialRegNo String?
+}
+
+model EntrepreneurProfile {
+  userId      String       @id
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectName String
+  sector      String
+  stage       ProjectStage
+  description String
+}
+
+model InvestorProfile {
+  userId       String       @id
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investorType InvestorType
+  ticketRange  String
+  organization String?
+}
+
+/// Uploaded identity files. They live in private storage (STORAGE_DIR),
+/// never under /public, and are streamed to admins only.
+model KycDocument {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       KycKind
+  storageKey String
+  mimeType   String
+  size       Int
+  /// false once a newer upload of the same kind replaces it
+  current    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([userId, kind, current])
+}
+
+model OtpCode {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model VerificationReview {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation("ReviewSubject", fields: [userId], references: [id], onDelete: Cascade)
+  reviewerId    String
+  reviewer      User           @relation("ReviewReviewer", fields: [reviewerId], references: [id])
+  decision      ReviewDecision
+  /// keys from lib/verification.ts → REVIEW_FIELDS
+  flaggedFields String[]
+  note          String?
+  createdAt     DateTime       @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String
+  targetId   String
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+// ───────────────────────── Phase 2: supply ─────────────────────────
+// Money is stored as integer piasters (1 EGP = 100) to avoid floating-point errors.
+
+enum RequestKind {
+  PRODUCT
+  SERVICE
+}
+
+enum RequestStatus {
+  OPEN // accepting offers
+  AWARDED // one offer accepted → an order exists
+  CLOSED // closed by the entrepreneur without an award
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum OrderStatus {
+  ACCEPTED
+  IN_PROGRESS
+  DELIVERED
+  COMPLETED
+}
+
+model SupplyRequest {
+  id              String        @id @default(cuid())
+  entrepreneurId  String
+  entrepreneur    User          @relation(fields: [entrepreneurId], references: [id])
+  kind            RequestKind
+  title           String
+  category        String
+  quantity        Int
+  unit            String
+  budgetMinPiasters Int?
+  budgetMaxPiasters Int?
+  /// offers are accepted until this instant (end of the chosen day, Cairo time)
+  offersDeadline  DateTime
+  description     String
+  status          RequestStatus @default(OPEN)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  offers Offer[]
+  order  Order?
+
+  @@index([status, kind, offersDeadline])
+  @@index([entrepreneurId, createdAt])
+}
+
+model Offer {
+  id            String        @id @default(cuid())
+  requestId     String
+  request       SupplyRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  supplierId    String
+  supplier      User          @relation(fields: [supplierId], references: [id])
+  pricePiasters Int
+  deliveryDays  Int
+  note          String?
+  status        OfferStatus   @default(PENDING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  order         Order?
+
+  /// one offer per supplier per request (edited or withdrawn, never duplicated)
+  @@unique([requestId, supplierId])
+  @@index([supplierId, status])
+}
+
+model Order {
+  id             String        @id @default(cuid())
+  requestId      String        @unique
+  request        SupplyRequest @relation(fields: [requestId], references: [id])
+  offerId        String        @unique
+  offer          Offer         @relation(fields: [offerId], references: [id])
+  buyerId        String
+  buyer          User          @relation("OrderBuyer", fields: [buyerId], references: [id])
+  supplierId     String
+  supplier       User          @relation("OrderSupplier", fields: [supplierId], references: [id])
+  amountPiasters Int
+  status         OrderStatus   @default(ACCEPTED)
+  startedAt      DateTime?
+  deliveredAt    DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([buyerId, status])
+  @@index([supplierId, status])
+}
+
+// ───────────────────────── Phase 3: investment & escrow ─────────────────────────
+// Percentages are stored in basis points (1% = 100) and money in piasters, both as integers.
+
+enum RoundStatus {
+  OPEN
+  CLOSED
+}
+
+enum InvestmentOfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum DealStatus {
+  AWAITING_FUNDING // offer accepted, investor has not paid into escrow yet
+  ACTIVE // funded; tranches are released milestone by milestone
+  COMPLETED // every tranche released
+}
+
+enum DealMilestoneStatus {
+  LOCKED // proof not submitted yet
+  AWAITING_APPROVAL // proof submitted, investor must decide
+  CHANGES_REQUESTED
+  RELEASED // tranche moved from escrow to the entrepreneur's wallet
+}
+
+enum LedgerKind {
+  FUNDING
+  PLATFORM_FEE
+  RELEASE
+}
+
+model InvestmentRound {
+  id               String      @id @default(cuid())
+  entrepreneurId   String
+  entrepreneur     User        @relation(fields: [entrepreneurId], references: [id])
+  title            String
+  pitch            String
+  useOfFunds       String
+  targetPiasters   Int
+  /// equity offered for the whole target, in basis points (30% = 3000)
+  equityBps        Int
+  minTicketPiasters Int
+  /// sum of accepted offers; updated atomically so the round can never be over-committed
+  committedPiasters Int        @default(0)
+  closesAt         DateTime
+  status           RoundStatus @default(OPEN)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  milestones RoundMilestone[]
+  offers     InvestmentOffer[]
+  deals      Deal[]
+
+  @@index([status, closesAt])
+  @@index([entrepreneurId])
+}
+
+model RoundMilestone {
+  id          String          @id @default(cuid())
+  roundId     String
+  round       InvestmentRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  position    Int
+  title       String
+  dueDate     DateTime
+  /// share of every investor's amount released at this milestone, in basis points; all milestones sum to 10000
+  shareBps    Int
+  proofNeeded String
+
+  submissions    MilestoneSubmission[]
+  dealMilestones DealMilestone[]
+
+  @@unique([roundId, position])
+}
+
+/// Proof of progress submitted by the entrepreneur (one milestone can be resubmitted after changes are requested).
+model MilestoneSubmission {
+  id          String         @id @default(cuid())
+  milestoneId String
+  milestone   RoundMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  summary     String
+  proofUrl    String?
+  createdAt   DateTime       @default(now())
+
+  @@index([milestoneId, createdAt])
+}
+
+model InvestmentOffer {
+  id             String                @id @default(cuid())
+  roundId        String
+  round          InvestmentRound       @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  investorId     String
+  investor       User                  @relation(fields: [investorId], references: [id])
+  amountPiasters Int
+  note           String?
+  status         InvestmentOfferStatus @default(PENDING)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  deal           Deal?
+
+  @@unique([roundId, investorId])
+  @@index([investorId, status])
+}
+
+model Deal {
+  id             String          @id @default(cuid())
+  roundId        String
+  round          InvestmentRound @relation(fields: [roundId], references: [id])
+  offerId        String          @unique
+  offer          InvestmentOffer @relation(fields: [offerId], references: [id])
+  investorId     String
+  investor       User            @relation("DealInvestor", fields: [investorId], references: [id])
+  amountPiasters Int
+  feePiasters    Int
+  equityBps      Int
+  status         DealStatus      @default(AWAITING_FUNDING)
+  fundedAt       DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  milestones DealMilestone[]
+  ledger     LedgerEntry[]
+
+  @@index([investorId, status])
+  @@index([roundId, status])
+}
+
+/// One investor's tranche for one round milestone.
+model DealMilestone {
+  id              String              @id @default(cuid())
+  dealId          String
+  deal            Deal                @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  milestoneId     String
+  milestone       RoundMilestone      @relation(fields: [milestoneId], references: [id])
+  position        Int
+  tranchePiasters Int
+  status          DealMilestoneStatus @default(LOCKED)
+  investorNote    String?
+  decidedAt       DateTime?
+
+  @@unique([dealId, milestoneId])
+  @@index([milestoneId, status])
+}
+
+/// Double-entry ledger: every money movement is a group of lines (same txId) that sums to zero.
+/// Balances are never stored; they are computed from these rows.
+/// Accounts: "external:<userId>" (money from outside), "escrow:<dealId>", "wallet:<userId>", "platform:fees".
+model LedgerEntry {
+  id             String     @id @default(cuid())
+  txId           String
+  account        String
+  amountPiasters Int
+  kind           LedgerKind
+  dealId         String?
+  deal           Deal?      @relation(fields: [dealId], references: [id])
+  memo           String?
+  createdAt      DateTime   @default(now())
+
+  @@index([account])
+  @@index([txId])
+  @@index([dealId])
+}

@@ -1,115 +1,53 @@
 import type { Config } from "tailwindcss"
 
+// Tokens follow the Elevante v2 design system (see the design canvas).
 const config: Config = {
-  darkMode: ["class"],
-  content: [
-    "./pages/**/*.{ts,tsx}",
-    "./components/**/*.{ts,tsx}",
-    "./app/**/*.{ts,tsx}",
-    "./src/**/*.{ts,tsx}",
-    "*.{js,ts,jsx,tsx,mdx}",
-  ],
-  prefix: "",
+  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./lib/**/*.{ts,tsx}"],
   theme: {
-    container: {
-      center: true,
-      padding: "2rem",
-      screens: {
-        "2xl": "1400px",
-      },
-    },
     extend: {
       fontFamily: {
-        georgia: ["Georgia", "serif"],
-        sans: ["Georgia", "serif"],
+        sans: ["Georgia", '"Noto Naskh Arabic"', "serif"],
       },
       colors: {
-        // Elevante Brand Colors - Updated to match landing page
-        elevante: {
-          primary: "#1D3557", // Dark blue
-          secondary: "#457B9D", // Medium blue
-          button: "#A8DADC", // Light blue
-          hover: "#F1FAEE", // Very light blue/cream
-          background: "#FFFFFF", // White
-          text: "#1D3557", // Dark blue text
-        },
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        primary: {
-          DEFAULT: "#1D3557",
-          foreground: "#FFFFFF",
-        },
-        secondary: {
-          DEFAULT: "#457B9D",
-          foreground: "#FFFFFF",
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
-        },
-        accent: {
-          DEFAULT: "#A8DADC",
-          foreground: "#1D3557",
-        },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
-        },
+        navy: "#1D3557",
+        steel: "#457B9D",
+        aqua: "#A8DADC",
+        mint: "#F1FAEE",
+        ice: "#E6F0FA",
+        danger: { DEFAULT: "#E63946", text: "#B42330", bg: "#FDECEE" },
+        success: { text: "#166534", bg: "#D1FADF" },
+        warn: { text: "#7A5600", bg: "#FEF9C3" },
+        muted: "#52627A",
+        line: "#DCEBEC",
       },
-      borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+      backgroundImage: {
+        "brand-btn": "linear-gradient(to left, #457B9D, #1D3557)",
+        "brand-panel": "linear-gradient(135deg, #457B9D, #1D3557)",
+        "brand-auth": "linear-gradient(135deg, #F1FAEE, #A8DADC 55%, #457B9D)",
+        "brand-tile": "linear-gradient(to left, #F1FAEE, rgba(168,218,220,.30))",
+      },
+      boxShadow: {
+        card: "0 10px 15px -3px rgba(29,53,87,.08), 0 4px 6px -4px rgba(29,53,87,.06)",
+        float: "0 25px 50px -12px rgba(29,53,87,.30)",
+        btn: "0 4px 12px -2px rgba(29,53,87,.30)",
       },
       keyframes: {
-        "accordion-down": {
-          from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
+        "float-sym": {
+          "0%, 100%": { transform: "translateY(0) rotate(0deg)" },
+          "50%": { transform: "translateY(-26px) rotate(18deg)" },
         },
-        "accordion-up": {
-          from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: "0" },
-        },
-        "fade-in": {
-          from: { opacity: "0", transform: "translateY(20px)" },
+        "fade-up": {
+          from: { opacity: "0", transform: "translateY(24px)" },
           to: { opacity: "1", transform: "translateY(0)" },
-        },
-        "fade-left": {
-          from: { opacity: "0", transform: "translateX(-20px)" },
-          to: { opacity: "1", transform: "translateX(0)" },
-        },
-        "fade-right": {
-          from: { opacity: "0", transform: "translateX(20px)" },
-          to: { opacity: "1", transform: "translateX(0)" },
-        },
-        "gradient-shift": {
-          "0%": { backgroundPosition: "0% 50%" },
-          "50%": { backgroundPosition: "100% 50%" },
-          "100%": { backgroundPosition: "0% 50%" },
         },
       },
       animation: {
-        "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
-        "fade-in": "fade-in 0.8s ease-out",
-        "fade-left": "fade-left 0.8s ease-out",
-        "fade-right": "fade-right 0.8s ease-out",
-        "gradient-shift": "gradient-shift 3s ease-in-out infinite",
+        "float-sym": "float-sym 7s ease-in-out infinite",
+        "fade-up": "fade-up .8s ease-out both",
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
-} satisfies Config
+  plugins: [],
+}
 
 export default config

@@ -1,256 +1,53 @@
-"use client"
+import type { Metadata } from "next"
+import Link from "next/link"
+import { Briefcase, Lightbulb, TrendingUp, Check } from "lucide-react"
+import { AuthShell } from "@/components/brand"
+import { ButtonLink } from "@/components/ui/button"
 
-import type React from "react"
+export const metadata: Metadata = { title: "اختيار نوع الحساب" }
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff, Mail, Lock, User } from "lucide-react"
-import MoneyAnimation from "@/components/money-animation"
+const ROLES = [
+  { slug: "supplier", icon: Briefcase, title: "مورد / مقدم خدمة", text: "تورّد مواد خام وسلعًا، أو تقدّم خدمات، أو الاتنين", points: ["اعرض منتجاتك أو خدماتك", "قدّم عروضك على طلبات التوريد"] },
+  { slug: "entrepreneur", icon: Lightbulb, title: "رائد أعمال", text: "عندك فكرة أو مشروع ومحتاج توريد أو تمويل", points: ["انشر طلبات توريد واستثمار", "تابع مراحل مشروعك"] },
+  { slug: "investor", icon: TrendingUp, title: "مستثمر", text: "موّل مشاريع موثّقة وتابع إنجازها", points: ["موّل على شرائح في الضمان", "راجع إثبات كل مرحلة"] },
+] as const
 
-interface RegisterPageProps {
-  onSwitchToLogin: () => void
-  onRegistrationSuccess: (email: string) => void
-}
-
-export default function RegisterPage({ onSwitchToLogin, onRegistrationSuccess }: RegisterPageProps) {
-  const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-  })
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [isLoading, setIsLoading] = useState(false)
-
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {}
-
-    if (!formData.firstName.trim()) {
-      newErrors.firstName = "First name is required"
-    }
-
-    if (!formData.lastName.trim()) {
-      newErrors.lastName = "Last name is required"
-    }
-
-    if (!formData.email) {
-      newErrors.email = "Email is required"
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = "Email is invalid"
-    }
-
-    if (!formData.password) {
-      newErrors.password = "Password is required"
-    } else if (formData.password.length < 8) {
-      newErrors.password = "Password must be at least 8 characters"
-    } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.password)) {
-      newErrors.password = "Password must contain uppercase, lowercase, and number"
-    }
-
-    if (!formData.confirmPassword) {
-      newErrors.confirmPassword = "Please confirm your password"
-    } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = "Passwords do not match"
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!validateForm()) return
-
-    setIsLoading(true)
-
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false)
-      onRegistrationSuccess(formData.email)
-    }, 1500)
-  }
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: "" }))
-    }
-  }
-
+export default function RoleSelectionPage() {
   return (
-    <div className="min-h-[calc(100vh-4rem)] p-4 elevante-hero-gradient money-bg flex items-center justify-center relative">
-      <MoneyAnimation />
-      <Card className="w-full max-w-md elevante-card shadow-2xl border-2 border-elevante-button relative z-10">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Join Elevante</CardTitle>
-          <CardDescription className="text-center">Create your account and start your journey</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First Name</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="firstName"
-                    name="firstName"
-                    type="text"
-                    placeholder="John"
-                    value={formData.firstName}
-                    onChange={handleInputChange}
-                    className={`pl-10 form-input ${errors.firstName ? "border-red-500" : ""}`}
-                  />
-                </div>
-                {errors.firstName && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{errors.firstName}</AlertDescription>
-                  </Alert>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="lastName"
-                    name="lastName"
-                    type="text"
-                    placeholder="Doe"
-                    value={formData.lastName}
-                    onChange={handleInputChange}
-                    className={`pl-10 form-input ${errors.lastName ? "border-red-500" : ""}`}
-                  />
-                </div>
-                {errors.lastName && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{errors.lastName}</AlertDescription>
-                  </Alert>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="john.doe@example.com"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  className={`pl-10 form-input ${errors.email ? "border-red-500" : ""}`}
-                />
-              </div>
-              {errors.email && (
-                <Alert variant="destructive">
-                  <AlertDescription>{errors.email}</AlertDescription>
-                </Alert>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Create a strong password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className={`pl-10 form-input ${errors.password ? "border-red-500" : ""}`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              {errors.password && (
-                <Alert variant="destructive">
-                  <AlertDescription>{errors.password}</AlertDescription>
-                </Alert>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  placeholder="Confirm your password"
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  className={`pl-10 form-input ${errors.confirmPassword ? "border-red-500" : ""}`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                >
-                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              {errors.confirmPassword && (
-                <Alert variant="destructive">
-                  <AlertDescription>{errors.confirmPassword}</AlertDescription>
-                </Alert>
-              )}
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <input id="terms" type="checkbox" className="rounded border-gray-300" required />
-              <Label htmlFor="terms" className="text-sm">
-                I agree to the{" "}
-                <button type="button" className="text-elevante-secondary hover:text-elevante-hover">
-                  Terms of Service
-                </button>{" "}
-                and{" "}
-                <button type="button" className="text-elevante-secondary hover:text-elevante-hover">
-                  Privacy Policy
-                </button>
-              </Label>
-            </div>
-
-            <Button
-              type="submit"
-              className="w-full elevante-button font-semibold py-3 rounded-lg shadow-lg"
-              disabled={isLoading}
-            >
-              {isLoading ? "Creating account..." : "Create account"}
-            </Button>
-          </form>
-        </CardContent>
-        <CardFooter className="flex justify-center">
-          <p className="text-sm text-gray-600">
-            Already have an account?{" "}
-            <button onClick={onSwitchToLogin} className="text-elevante-secondary hover:text-elevante-hover font-medium">
-              Sign in
-            </button>
-          </p>
-        </CardFooter>
-      </Card>
-    </div>
+    <AuthShell headerAction={<ButtonLink href="/login" variant="outline" size="sm">لديك حساب؟ تسجيل الدخول</ButtonLink>}>
+      <div className="w-full max-w-5xl animate-fade-up self-start">
+        <div className="mb-10 text-center">
+          <h1 className="text-3xl font-extrabold sm:text-4xl">اختر نوع حسابك</h1>
+          <p className="mt-3 text-navy/80">كل نوع ليه نموذج تسجيل خاص، وكل الحسابات بتتوثق برقم البطاقة قبل التفعيل.</p>
+        </div>
+        <ul className="grid gap-5 md:grid-cols-3">
+          {ROLES.map(({ slug, icon: Icon, title, text, points }) => (
+            <li key={slug}>
+              <Link
+                href={`/register/${slug}`}
+                className="flex h-full flex-col gap-4 rounded-[20px] border border-ice bg-white p-6 shadow-card transition hover:scale-[1.02] hover:shadow-float"
+              >
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-panel text-white shadow-btn">
+                  <Icon size={24} aria-hidden />
+                </span>
+                <span>
+                  <span className="block text-xl font-bold">{title}</span>
+                  <span className="mt-1 block text-sm text-muted">{text}</span>
+                </span>
+                <span className="flex flex-1 flex-col gap-2">
+                  {points.map((p) => (
+                    <span key={p} className="flex items-center gap-2 text-sm">
+                      <Check size={16} className="text-steel" aria-hidden />
+                      {p}
+                    </span>
+                  ))}
+                </span>
+                <span className="text-sm font-bold text-steel">ابدأ التسجيل ←</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </AuthShell>
   )
 }
