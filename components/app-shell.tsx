@@ -6,8 +6,10 @@ import type { CurrentUser } from "@/lib/session"
 const NAV: Record<Exclude<Role, "ADMIN">, { href: string; label: string }[]> = {
   ENTREPRENEUR: [
     { href: "/dashboard", label: "الرئيسية" },
-    { href: "/requests", label: "طلباتي" },
+    { href: "/requests", label: "طلبات التوريد" },
     { href: "/orders", label: "الطلبات الجارية" },
+    { href: "/rounds", label: "جولات التمويل" },
+    { href: "/wallet", label: "المحفظة" },
   ],
   SUPPLIER: [
     { href: "/dashboard", label: "الرئيسية" },
@@ -15,7 +17,11 @@ const NAV: Record<Exclude<Role, "ADMIN">, { href: string; label: string }[]> = {
     { href: "/offers", label: "عروضي" },
     { href: "/orders", label: "الطلبات الجارية" },
   ],
-  INVESTOR: [{ href: "/dashboard", label: "الرئيسية" }],
+  INVESTOR: [
+    { href: "/dashboard", label: "الرئيسية" },
+    { href: "/invest", label: "فرص الاستثمار" },
+    { href: "/portfolio", label: "محفظتي" },
+  ],
 }
 
 export function AppShell({ user, active, children }: { user: CurrentUser; active: string; children: React.ReactNode }) {

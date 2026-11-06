@@ -23,7 +23,23 @@ Elevante connects entrepreneurs, suppliers / service providers and investors. Ve
    - The supplier moves the order from *accepted* to *in progress*, then to *delivered*.
    - The entrepreneur confirms receipt.
 
-The next phase adds payments: investment deals and supply orders funded into a simulated escrow ledger, released milestone by milestone.
+### Phase 3: funding rounds, escrow and milestone releases
+
+1. **Funding round.** An entrepreneur opens one round at a time. It has a target amount, the equity offered for the whole target, a minimum ticket, a closing date, and 2 to 6 milestones. Each milestone's share of the funding is a percentage, and the shares must add up to exactly 100%.
+2. **Offers.** Investors browse open rounds and offer an amount. They see live:
+   - the equity they would get,
+   - the 2% platform fee,
+   - the total they would pay.
+3. **Accepting.** The entrepreneur accepts or rejects offers. Accepting creates a deal, and the round can never be committed beyond its target. When the round is full it closes automatically.
+4. **Funding.** The investor funds the deal (a simulated payment). The amount goes into the deal's escrow account and the fee to the platform. The tranche schedule is created from the milestone shares.
+5. **Releasing.** The entrepreneur submits proof for each milestone, in order. Each investor then either:
+   - approves, which releases their tranche from escrow to the entrepreneur's wallet, or
+   - requests changes with a note, after which the entrepreneur resubmits.
+
+   When all tranches are released, the deal is completed.
+6. **Balances.** Wallet and escrow balances are computed from the ledger, never stored.
+
+Supply orders will move onto the same ledger next.
 
 ## Tech stack
 
@@ -67,6 +83,11 @@ app/
   market/              supplier: open requests, submit / edit / withdraw an offer
   offers/              supplier: my offers
   orders/              both parties: order timeline and status steps
+  rounds/              entrepreneur: funding rounds, investor offers, milestone proof
+  wallet/              entrepreneur: balance and ledger history
+  invest/              investor: open rounds and investment offers
+  portfolio/           investor: deals, escrow held, milestones to review
+  deals/               both parties: funding into escrow, milestone approvals
   admin/verifications/ review queue, review page, decision action
   api/admin/kyc/       streams identity images to admins only
 lib/
@@ -78,6 +99,8 @@ lib/
   schemas.ts           Zod schemas shared by forms and actions
   supply.ts            supply rules: who can do what, in which state (unit tested)
   money.ts, dates.ts   integer piasters; deadlines at end of day in Cairo time
+  invest.ts            tranche split, equity, fee, ledger lines, milestone order (unit tested)
+  ledger.ts            posts balanced ledger transactions; computes balances
 prisma/schema.prisma
 middleware.ts          first-line route protection
 ```
@@ -172,6 +195,45 @@ On top of that:
 
 **Result:** Each request gets at most one order, and every status change happens once.
 
+### An escrow you can audit: a double-entry ledger
+
+**Problem:**
+
+- Keeping balances as numbers that get updated (`balance = balance - x`) loses history.
+- It can drift after a partial failure.
+- It cannot answer "where did this money come from?"
+
+**Approach:** Never store a balance. Record every money movement as a group of lines that sum to zero, and compute every balance from those lines.
+
+**Solution:** `LedgerEntry` rows share a `txId`, and `assertBalanced` rejects any group that does not sum to zero or that contains non-integer amounts. The accounts are:
+
+- `external:<investor>`: money coming in from outside
+- `escrow:<deal>`: money held for one deal
+- `wallet:<entrepreneur>`: money released to the entrepreneur
+- `platform:fees`: the platform's 2%
+
+The money operations work like this:
+
+- **Funding** posts two balanced transactions: the amount into escrow, and the fee to the platform.
+- **Releasing** a tranche moves it from escrow to the wallet. This happens in the same database transaction as the milestone status change, and that transaction first checks that escrow cannot go negative.
+- **Tranches** are split in integer piasters. The last tranche absorbs rounding, so they always add up to the exact amount.
+
+**Result:** Every pound in escrow, in a wallet or in fees can be traced to the action that moved it, and the totals always reconcile. The rules are covered by unit tests.
+
+### A round that can never be over-committed
+
+**Problem:** Two investors' offers can be accepted at the same moment for the last part of a round.
+
+**Solution:** Accepting an offer reserves capacity with one atomic update:
+
+```
+UPDATE round
+SET committed = committed + amount
+WHERE committed <= target - amount AND status = 'OPEN'
+```
+
+If no row is updated, the round is full. The offer's own status change, the deal creation and the automatic close happen in the same transaction.
+
 ### Money and deadlines
 
 **Problem:**
@@ -191,3 +253,6 @@ On top of that:
 - **ID check digit:** the last digit is not verified, because its algorithm is not officially published.
 - **Rate limiting:** there is no rate limiting on login yet. OTP codes are limited to 5 attempts and one resend per minute.
 - **File cleanup:** if saving the account fails after the images are written, the images stay in storage. A cleanup job is planned.
+- **Payments:** they are simulated, and no payment gateway is connected. Funding writes to the ledger as if the money had arrived.
+- **Withdrawals:** withdrawing from the wallet to a bank account will be approved by admins in a later phase.
+- **Milestone proof:** it is text plus an optional https link. File uploads for proof are planned.

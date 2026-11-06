@@ -3,7 +3,7 @@ import Link from "next/link"
 import { ShieldCheck } from "lucide-react"
 import { AppShell, PageTitle } from "@/components/app-shell"
 import { ButtonLink } from "@/components/ui/button"
-import { Badge, Card } from "@/components/ui/surface"
+import { Card } from "@/components/ui/surface"
 import { db } from "@/lib/db"
 import { requireApproved } from "@/lib/session"
 
@@ -30,7 +30,11 @@ export default async function DashboardPage() {
       db.offer.count({ where: { status: "PENDING", request: { entrepreneurId: user.id, status: "OPEN" } } }),
       db.order.count({ where: { buyerId: user.id, status: { not: "COMPLETED" } } }),
     ])
-    stats = (<><Stat label="طلبات مفتوحة" value={open} href="/requests" /><Stat label="عروض بانتظار قرارك" value={pendingOffers} href="/requests" /><Stat label="طلبات قيد التنفيذ" value={active} href="/orders" /></>)
+    const [investOffers, proofsNeeded] = await Promise.all([
+      db.investmentOffer.count({ where: { status: "PENDING", round: { entrepreneurId: user.id, status: "OPEN" } } }),
+      db.dealMilestone.count({ where: { status: "CHANGES_REQUESTED", deal: { round: { entrepreneurId: user.id } } } }),
+    ])
+    stats = (<><Stat label="طلبات توريد مفتوحة" value={open} href="/requests" /><Stat label="عروض توريد بانتظار قرارك" value={pendingOffers} href="/requests" /><Stat label="طلبات قيد التنفيذ" value={active} href="/orders" /><Stat label="عروض استثمار بانتظار قرارك" value={investOffers} href="/rounds" /><Stat label="مراحل مطلوب تعديلها" value={proofsNeeded} href="/rounds" /></>)
     action = <ButtonLink href="/requests/new">طلب توريد جديد</ButtonLink>
   } else if (user.role === "SUPPLIER") {
     const [pending, active, toAct] = await Promise.all([
@@ -40,6 +44,14 @@ export default async function DashboardPage() {
     ])
     stats = (<><Stat label="عروض قيد الانتظار" value={pending} href="/offers" /><Stat label="طلبات جارية" value={active} href="/orders" /><Stat label="محتاجة خطوة منك" value={toAct} href="/orders" /></>)
     action = <ButtonLink href="/market">تصفّح طلبات التوريد</ButtonLink>
+  } else if (user.role === "INVESTOR") {
+    const [pending, toFund, toReview] = await Promise.all([
+      db.investmentOffer.count({ where: { investorId: user.id, status: "PENDING" } }),
+      db.deal.count({ where: { investorId: user.id, status: "AWAITING_FUNDING" } }),
+      db.dealMilestone.count({ where: { status: "AWAITING_APPROVAL", deal: { investorId: user.id, status: "ACTIVE" } } }),
+    ])
+    stats = (<><Stat label="عروض قيد الانتظار" value={pending} href="/portfolio" /><Stat label="صفقات بانتظار تمويلك" value={toFund} href="/portfolio" /><Stat label="مراحل بانتظار مراجعتك" value={toReview} href="/portfolio" /></>)
+    action = <ButtonLink href="/invest">فرص الاستثمار</ButtonLink>
   }
 
   return (
@@ -53,13 +65,6 @@ export default async function DashboardPage() {
         </div>
       </Card>
       {stats ? <div className="grid gap-4 sm:grid-cols-3">{stats}</div> : null}
-      {user.role === "INVESTOR" ? (
-        <div className="grid gap-4 md:grid-cols-3">
-          {["استكشاف المشاريع", "تقديم عرض استثمار", "اعتماد المراحل والإفراج من الضمان"].map((t) => (
-            <Card key={t} className="opacity-80"><Badge tone="neutral">قريبًا</Badge><div className="font-bold">{t}</div></Card>
-          ))}
-        </div>
-      ) : null}
     </AppShell>
   )
 }

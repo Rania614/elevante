@@ -3,7 +3,7 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/session-token"
 
 // First line of defence only: every protected page and action also checks
 // the session and the account status against the database on the server.
-const PROTECTED = ["/dashboard", "/verification", "/verify-phone", "/admin", "/requests", "/market", "/offers", "/orders"]
+const PROTECTED = ["/dashboard", "/verification", "/verify-phone", "/admin", "/requests", "/market", "/offers", "/orders", "/rounds", "/wallet", "/invest", "/portfolio", "/deals"]
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -23,5 +23,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/verification/:path*", "/verify-phone", "/admin/:path*", "/requests/:path*", "/market/:path*", "/offers/:path*", "/orders/:path*"],
+  matcher: ["/dashboard/:path*", "/verification/:path*", "/verify-phone", "/admin/:path*", "/requests/:path*", "/market/:path*", "/offers/:path*", "/orders/:path*", "/rounds/:path*", "/wallet/:path*", "/invest/:path*", "/portfolio/:path*", "/deals/:path*"],
 }
