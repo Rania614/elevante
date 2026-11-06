@@ -1,64 +1,139 @@
-# Elevante (Web Demo)
+# Elevante v2
 
-Web demo of Elevante, my ITI graduation project: a business platform that brings together entrepreneurs, investors, and suppliers. I was the team lead on the project.
+Elevante connects entrepreneurs, suppliers / service providers and investors. Version 2 rebuilds my ITI graduation project as a real full-stack application, starting from the part every other feature depends on: **verified accounts**.
 
-This repository contains the web demo only. The initial UI was scaffolded with v0.
+> Branch `v2` is work in progress. The original v0 web demo stays on `main`.
 
-## Features
+## What works in this phase
 
-- **Onboarding:** login, registration, role selection, and a three-step profile setup.
-- **Role dashboards:** separate page sets for entrepreneurs, investors, and suppliers.
-- **Admin views:** control center with user management and system settings.
-- **Shared layout:** role-aware sidebar and an account settings page.
+1. **Registration per role.** Entrepreneur, supplier / service provider, or investor. Each role has its own profile fields.
+2. **Identity verification (KYC).** Egyptian national ID plus three photos: ID front, ID back, and a selfie holding the ID.
+3. **Phone confirmation.** 6-digit one-time code.
+4. **Admin review.** Approve the account, or request changes on specific fields with a note.
+5. **Resubmission.** The user can edit only the fields the admin flagged, then the account goes back to review.
+6. **Access by status.** Only approved accounts reach the dashboard. Admin pages are admin-only.
 
-## Tech Stack
+The next phases are already designed:
 
-Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, shadcn/ui components (Radix UI), lucide-react.
+- Supply requests, then offers, then accepting an offer.
+- Investment deals funded into escrow, with milestone-by-milestone release.
 
-## Technical Challenges & Solutions
+## Tech stack
 
-### Challenge: One onboarding flow for three roles
+- **App:** Next.js 15 (App Router, Server Actions), React 19, TypeScript in strict mode.
+- **Data:** Prisma 6 with PostgreSQL.
+- **Styling:** Tailwind CSS with the Elevante design tokens. The interface is Arabic and right-to-left.
+- **Validation and auth:** Zod, signed session cookies with `jose`, and `bcryptjs` for password hashing.
 
-**Problem:** Registration, role selection, profile setup, and login all have to end on the right dashboard for the user's role, including the admin.
-
-**Approach:** Because the demo has no backend or session, the whole flow is kept in one client-side state machine.
-
-**Solution:** A `PageType` union lists every screen. The root component holds the current page, role, and profile, routes by role after login and after profile setup, and clears everything on logout.
-
-**Result:** The full flow can be read in one file. The trade-off is that screens have no URL of their own, so a refresh returns to login.
-
-### Challenge: A profile form that changes by role
-
-**Problem:** Each role needs different profile fields, but the steps should feel the same.
-
-**Approach:** Share the wizard and switch only the role-specific step.
-
-**Solution:** Step one collects common fields and step two renders investor, supplier, or entrepreneur fields. Each step is validated before moving on, an error clears when its field is edited, and the profile photo is previewed with `FileReader`.
-
-**Result:** A user cannot advance with required fields missing and sees which fields need attention.
-
-### Challenge: One layout for three dashboards
-
-**Problem:** Three dashboards have different menus and pages, and three separate layouts would repeat the same shell.
-
-**Approach:** Drive the shell from the role and the current page key.
-
-**Solution:** A single sidebar builds its menu from the role and highlights the active page. The layout hands the page key to the matching role component, and settings is shared.
-
-**Result:** Adding a dashboard page takes one menu entry and one case in the role component.
-
-## Known Limitations
-
-- **Sample data:** all dashboard content is sample data written into the components.
-- **Simulated authentication:** login accepts two fixed demo accounts after a timed delay, and registration does not create an account.
-- **No backend:** the demo makes no API calls.
-- **No persistence:** state is held in memory, so refreshing the page returns to login.
-
-## Getting Started
+## Getting started
 
 ```bash
 npm install
+cp .env.example .env          # then fill in the values (see comments in the file)
+npx prisma migrate dev --name init
+npm run db:seed               # creates the first admin from ADMIN_EMAIL / ADMIN_PASSWORD
 npm run dev
 ```
 
-Open http://localhost:3000. Demo logins: `admin@elevante.com` / `admin123` (admin) and `test@example.com` / `password` (investor).
+Before running this you need:
+
+- A PostgreSQL database.
+- Two secrets, each generated with `openssl rand -base64 32`: `SESSION_SECRET` and `NATIONAL_ID_KEY`.
+
+No SMS provider is connected yet. In development, set `DEV_SHOW_OTP="true"` and the code is shown on the verify page. This option is disabled in production even if it is left on.
+
+```bash
+npm test          # unit tests for national ID parsing and form validation
+npm run typecheck
+```
+
+## Project structure
+
+```
+app/
+  register/            role selection, role forms, registration action
+  verify-phone/        OTP form and actions
+  login/               login form
+  verification/        status page and resubmission of flagged fields
+  dashboard/           approved users only
+  admin/verifications/ review queue, review page, decision action
+  api/admin/kyc/       streams identity images to admins only
+lib/
+  national-id.ts       parse and validate the Egyptian national ID
+  crypto.ts            AES-256-GCM encryption, keyed hash, OTP hashing
+  session*.ts          session cookie, access guards (Edge-safe token code split out)
+  storage.ts           private file storage with content-based type checks
+  otp.ts, otp-delivery.ts
+  schemas.ts           Zod schemas shared by forms and actions
+prisma/schema.prisma
+middleware.ts          first-line route protection
+```
+
+## Technical Challenges & Solutions
+
+### Storing national IDs without exposing them
+
+**Problem:** One account per national ID requires searching by the number, but the number must not sit in the database as plain text.
+
+**Approach:** Keep two values: one that can be decrypted for review, and one that can only be compared.
+
+**Solution:**
+
+- The ID is encrypted with AES-256-GCM (`nationalIdEnc`).
+- A keyed HMAC of the ID (`nationalIdHash`) has a unique index and is used for duplicate checks.
+- Only the last four digits are kept readable.
+- When an admin opens a review page, the ID is decrypted, and that view is written to the audit log.
+
+**Result:** Duplicate national IDs are rejected at the database level, and nothing is stored in plain text.
+
+### Identity images that must never be public
+
+**Problem:** ID photos cannot live under `/public`, and the file type the browser reports cannot be trusted.
+
+**Approach:** Use private storage plus an authorised streaming route.
+
+**Solution:**
+
+- Each upload's type is checked from its content (magic bytes), and its size is capped at 5 MB.
+- Files are written under `STORAGE_DIR` with random names.
+- They are served only by `/api/admin/kyc/[docId]`. The route checks for an admin session, sends `no-store` and `nosniff` headers, and guards against path traversal.
+
+**Result:** Only admins can open identity images, and browsers do not cache them.
+
+### A review flow that cannot be raced or bypassed
+
+**Problem:**
+
+- Two admins could decide on the same account at the same time.
+- A user could change fields the admin did not flag.
+
+**Approach:** Every status change is a conditional update, and the flagged fields are read only from the database.
+
+**Solution:**
+
+- Decisions use `updateMany where status = PENDING_REVIEW` inside a transaction, with an audit entry. If the update changes 0 rows, someone already decided.
+- Resubmission reads the flagged fields from the latest review on the server and ignores anything else in the form.
+
+**Result:** Each submission gets exactly one decision, and users can only correct what was asked.
+
+### Validating the Egyptian national ID
+
+**Problem:** A plain 14-digit check accepts many IDs that cannot exist.
+
+**Approach:** Decode the ID's structure: century digit, birth date (`YYMMDD`), and governorate code.
+
+**Solution:**
+
+- `parseNationalId` rejects impossible dates, unknown governorate codes, and applicants under 18.
+- It accepts Arabic-Indic digits.
+- It runs in the browser before upload and again on the server.
+- The admin page shows the birth date and governorate decoded from the ID next to the submitted data.
+
+**Result:** Bad IDs are caught before any image is uploaded. The rules are covered by unit tests in `tests/`.
+
+## Known limitations
+
+- **OTP delivery:** there is no SMS provider yet. `lib/otp-delivery.ts` is the place to connect one.
+- **ID check digit:** the last digit is not verified, because its algorithm is not officially published.
+- **Rate limiting:** there is no rate limiting on login yet. OTP codes are limited to 5 attempts and one resend per minute.
+- **File cleanup:** if saving the account fails after the images are written, the images stay in storage. A cleanup job is planned.

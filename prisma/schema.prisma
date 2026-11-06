@@ -1,0 +1,174 @@
+// Elevante v2 — phase 1: accounts, identity verification (KYC), admin review.
+// Later phases add requests, offers, deals, milestones and the escrow ledger.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ENTREPRENEUR
+  SUPPLIER
+  INVESTOR
+  ADMIN
+}
+
+/// Lifecycle of an account. Only APPROVED accounts reach the dashboards.
+enum AccountStatus {
+  PENDING_PHONE // registered, phone not confirmed yet
+  PENDING_REVIEW // waiting for an admin
+  NEEDS_CHANGES // admin flagged fields; user must resubmit
+  APPROVED
+  SUSPENDED
+}
+
+enum SupplyType {
+  PRODUCTS
+  SERVICES
+  BOTH
+}
+
+enum ProjectStage {
+  IDEA
+  PROTOTYPE
+  OPERATING
+  REVENUE
+}
+
+enum InvestorType {
+  INDIVIDUAL
+  COMPANY
+  FUND
+}
+
+enum KycKind {
+  ID_FRONT
+  ID_BACK
+  SELFIE
+}
+
+enum ReviewDecision {
+  APPROVED
+  NEEDS_CHANGES
+}
+
+model User {
+  id           String        @id @default(cuid())
+  role         Role
+  status       AccountStatus @default(PENDING_PHONE)
+  fullName     String
+  email        String        @unique
+  phone        String        @unique
+  passwordHash String
+  governorate  String?
+
+  /// National ID is stored encrypted (AES-256-GCM). The HMAC lets us enforce
+  /// one account per ID without keeping the number in plain text.
+  nationalIdEnc   String?
+  nationalIdHash  String?   @unique
+  nationalIdLast4 String?
+  birthDate       DateTime?
+
+  phoneVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  supplierProfile     SupplierProfile?
+  entrepreneurProfile EntrepreneurProfile?
+  investorProfile     InvestorProfile?
+  kycDocuments        KycDocument[]
+  otpCodes            OtpCode[]
+  reviewsReceived     VerificationReview[] @relation("ReviewSubject")
+  reviewsGiven        VerificationReview[] @relation("ReviewReviewer")
+  auditLogs           AuditLog[]
+
+  @@index([status, role])
+}
+
+model SupplierProfile {
+  userId       String     @id
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  supplyType   SupplyType
+  businessName String
+  commercialRegNo String?
+}
+
+model EntrepreneurProfile {
+  userId      String       @id
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectName String
+  sector      String
+  stage       ProjectStage
+  description String
+}
+
+model InvestorProfile {
+  userId       String       @id
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investorType InvestorType
+  ticketRange  String
+  organization String?
+}
+
+/// Uploaded identity files. They live in private storage (STORAGE_DIR),
+/// never under /public, and are streamed to admins only.
+model KycDocument {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       KycKind
+  storageKey String
+  mimeType   String
+  size       Int
+  /// false once a newer upload of the same kind replaces it
+  current    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([userId, kind, current])
+}
+
+model OtpCode {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model VerificationReview {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation("ReviewSubject", fields: [userId], references: [id], onDelete: Cascade)
+  reviewerId    String
+  reviewer      User           @relation("ReviewReviewer", fields: [reviewerId], references: [id])
+  decision      ReviewDecision
+  /// keys from lib/verification.ts → REVIEW_FIELDS
+  flaggedFields String[]
+  note          String?
+  createdAt     DateTime       @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String
+  targetId   String
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
